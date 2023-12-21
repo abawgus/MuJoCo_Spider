@@ -16,7 +16,7 @@ from torchrl.envs import (Compose, DoubleToFloat, ObservationNorm, StepCounter,
 from torchrl.envs.libs.gym import GymEnv
 from torchrl.envs.utils import check_env_specs, set_exploration_mode
 from torchrl.modules import ProbabilisticActor, TanhNormal, ValueOperator
-from torchrl.objectives import ClipPPOLoss, KLPENPPOLoss, A2CLoss
+from torchrl.objectives import ClipPPOLoss, KLPENPPOLoss, A2CLoss, ReinforceLoss
 from torchrl.objectives.value import GAE
 from tqdm import tqdm
 import pickle
@@ -97,7 +97,7 @@ class Learning_Agent(nn.Module):
             loss_module = KLPENPPOLoss(
                 actor=self.policy_module,
                 critic=self.value_module,
-                beta=1,
+                beta=.8,
                 advantage_key="advantage",
                 entropy_bonus=bool(self.entropy_eps),
                 entropy_coef=self.entropy_eps,                
@@ -109,12 +109,20 @@ class Learning_Agent(nn.Module):
             loss_module = A2CLoss(
                 actor=self.policy_module,
                 critic=self.value_module,                
-                advantage_key="advantage",
-                entropy_bonus=bool(self.entropy_eps),
-                entropy_coef=self.entropy_eps,                
-                value_target_key=self.advantage_module.value_target_key,
-                critic_coef=1.0,
-                loss_critic_type="smooth_l1",
+                # advantage_key="advantage",
+                # entropy_bonus=bool(self.entropy_eps),
+                # entropy_coef=self.entropy_eps,                
+                # value_target_key=self.advantage_module.value_target_key,
+                # critic_coef=0.2,
+                # loss_critic_type="l2",
+            )
+        elif type == 'REINFORCE':
+            loss_module = ReinforceLoss(
+                actor=self.policy_module,
+                critic=self.value_module, 
+                # loss_critic_type="smooth_l1",                               
+                # advantage_key="advantage",
+                # value_target_key=self.advantage_module.value_target_key,
             )
             
         return loss_module
@@ -208,11 +216,18 @@ class Learning_Agent(nn.Module):
                         pass
                     else:
                         loss_vals = self.loss_module(subdata.to(self.device))
-                    loss_value = (
-                        loss_vals["loss_objective"]
-                        + loss_vals["loss_critic"]
-                        + loss_vals["loss_entropy"]
+                    
+                    if self.loss_mod_type=='REINFORCE':
+                        loss_value = (
+                        loss_vals["loss_actor"]
+                        + loss_vals["loss_value"]
                     )
+                    else:
+                        loss_value = (
+                            loss_vals["loss_objective"]
+                            + loss_vals["loss_critic"]
+                            + loss_vals["loss_entropy"]
+                        )
                     loss_value.backward()
                     
                     self.optim.step()
@@ -298,7 +313,7 @@ if __name__ == "__main__":
         
     seeds = [10,20,30,40,50]
     # loss_types = ['KL']
-    loss_types = ['clip_ppo','A2C']
+    loss_types = ['REINFORCE']
     agent_logs = []
     
     plt.style.use('seaborn-v0_8-whitegrid')
@@ -308,30 +323,31 @@ if __name__ == "__main__":
     axar[2].set_title("Return (test)", weight='semibold')
     
     for loss_type in loss_types:
+        plot_logs = []
         for seed in seeds:    
             agent = Learning_Agent(seed=seed,
                                    loss_mod_type=loss_type)
             agent.train(
                         # num_epochs = 10, 
-                        # total_frames = 5_000, 
+                        # total_frames = 1_000, 
                         # frame_skip=1, 
-                        # frames_per_batch= 100, 
+                        # frames_per_batch= 10, 
                         # sub_batch_size = 64,
                         
                         num_epochs = 20, 
-                        total_frames = 1_000_000, 
+                        total_frames = 200_000, 
                         frame_skip=1, 
                         frames_per_batch= 5_000, 
-                        sub_batch_size = 64,
-                        
+                        sub_batch_size = 64,                        
                         )
-            save(agent, 'test_121923%s_%i' % (loss_type, seed))
+            save(agent, 'test_121923_%s_%i' % (loss_type, seed))
             agent_logs.append(agent.logs)
+            plot_logs.append(agent.logs)
         
         for i, ax_param in enumerate(['reward','eval reward','eval reward (sum)']):
-            x_low = np.minimum.reduce([log[ax_param] for log in agent_logs])
-            x_med = np.median([log[ax_param] for log in agent_logs], axis=0)
-            x_high = np.maximum.reduce([log[ax_param] for log in agent_logs])    
+            x_low = np.minimum.reduce([log[ax_param] for log in plot_logs])
+            x_med = np.median([log[ax_param] for log in plot_logs], axis=0)
+            x_high = np.maximum.reduce([log[ax_param] for log in plot_logs])    
             axar[i].fill_between(list(range(len(x_low))), 
                                  y1=x_low, 
                                  y2=x_high, 
@@ -347,6 +363,17 @@ if __name__ == "__main__":
     
     axar[2].legend(bbox_to_anchor=(1,1))
     fig.tight_layout()
+    fig.savefig(r"output.png")
+    
+    file = open(r"plot_relevant%s" % 'final', 'wb')
+    pickle.dump({
+        'seeds' : seeds,
+        'loss_types' : loss_types,
+        'logs' : agent_logs,
+    }
+                , file)
+    file.close()
+
     
     plt.show()
     print('DONE')
