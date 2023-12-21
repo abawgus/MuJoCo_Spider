@@ -6,9 +6,9 @@ See spec_file_gym_re for the list of packages for the conda environment required
 
 To run the MuJoCo spider, the spider files must be added to the Gym library.
 
-In the conda environment, go to '/Lib/site_packages/gymnasium/env/__init__.py'
+(1) In the conda environment, go to '/Lib/site_packages/gymnasium/env/__init__.py'
 
-(1) Add the following text to the __init__ file:
+Add the following text to the __init__ file:
 
 register(
      id="Spider-v0",
