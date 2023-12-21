@@ -222,6 +222,11 @@ class SpiderEnv(MujocoEnv, utils.EzPickle):
         else:
             return np.concatenate((position, velocity))#, accel, gyro))
 
+    def get_sensor_data(self):        
+        accel = self.data.sensor('accelerometer').data
+        gyro = self.data.sensor('gyro').data
+        return accel, gyro
+    
     def reset_model(self):
         noise_low = -self._reset_noise_scale
         noise_high = self._reset_noise_scale
